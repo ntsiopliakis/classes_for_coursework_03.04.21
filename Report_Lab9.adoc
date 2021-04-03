@@ -1,0 +1,201 @@
+:imagesdir: Images
+:figure-caption: Рисунок
+
+== Разработка системы классов в рамках курсовой работы
+
+=== *Классы, описывающие значения измеряемых величин*
+
+На рисунке 1 представлено описание классов Measurement и Temperature.
+
+.Классы Measurement и Temperature
+image::1.svg[8000 4000]
+
+Класс Measurement, описывающий значения  измеряемых величин, имеет следующие компоненты:
+
+* DataSourceFcn - указатель на функцию-поставщик данных;
+* units - массив единиц измерения, используемых для выражения значения этой величины;
+* countOfUnit - длина массива unit;
+* defaultUnit - исходная единица измерения, в которой выражены значения, поставляемые источником данных DataSourceFcn;
+* GetValue() - функция, возвращающая выраженное в defaultUnit значение измеряемой величины;
+* GetValue(unit) - функция, возвращающая значение измеряемой величины, выраженное в выбранной единице измерения unit;
+* quantityName - сторка наименования измеряемой величины;
+* ShowUnitName(unit) - статическая функция, возвращающаяя строку обозначения единицы измерения unit.
+* конструктор, создающий экземпляр класса на основе названия измеряемой величины, массива  допустимых единиц измерений, длины этого массива, исходной величины измерения, указателя на функцию-поставщика данных;
+* упрощенный конструктор для величин с одной допустимой единицей измерения, создающий экземпляр класса на основе названия измеряемой величины, единицы измерения, указателя на функцию-поставщика данных.
+
+Дочерний класс Temperature, реализующий логику пересчета из одной температурной шкалы в другую, используется для описания величин, имеющих размерность температуры: temperature и dewPoint. Давление и влажность в рамках данной программы имеют по одной единице измерения, и ввиду отсутствия специальной логики для их описания достаточно базового класса Measurement:
+
+=== Инициализация объектов измеряемых величин в файле measurementconfig.h
+
+[source, cpp]
+----
+#include "Measurement.h"
+#include "Temperature.h"
+
+inline Temperature temperature("Temperature", fcnTemp);
+
+inline Measurement pressure("Pressure", mmHg, fcnPress);
+inline Measurement humidity("Humidity", percent, fcnHum);
+
+inline Temperature dewPoint("Dew point",  fcnDewP);
+----
+
+Ниже представлен пример использования введенных классов: в Terminal I/O выводятся значения измеряемых величин при двух наборах единиц измерения: userUnits1 и userUnits2.
+
+[source, cpp]
+----
+int main()
+{
+  Unit userUnits1[4] = {K, mmHg, percent, C};
+  Unit userUnits2[4] = {C, mmHg, percent, F};
+  Measurement* measurements[4] = {&temperature, &pressure, &humidity, &dewPoint};
+
+  for(int k=0;k<4;k++)
+  {
+    std::printf("%11s : %5.2f %5s \n",measurements[k]->quantityName.c_str(),
+              measurements[k]->GetValue(userUnits1[k]),Measurement::ShowUnitName(userUnits1[k]).c_str());
+  }
+
+  std::printf("\n");
+
+  for(int k=0;k<4;k++)
+  {
+    std::printf("%11s : %5.2f %5s \n",measurements[k]->quantityName.c_str(),
+              measurements[k]->GetValue(userUnits2[k]),Measurement::ShowUnitName(userUnits2[k]).c_str());
+  }
+}
+----
+
+   На рисунке 2 представлен результат выполнения приведенного выше кода.
+
+.Форматированный вывод значений измеряемых величин в терминал I/O
+image::2.png[]
+
+=== Файл temperature.h
+
+[source, cpp]
+----
+#include "Measurement.h"
+#include <cassert>
+
+Unit temperatureUnits[3]={K,C,F};
+
+class Temperature: public Measurement
+{
+public:
+  Temperature(string quantityName, double(*DataSourceFcn)())
+    :Measurement(quantityName, temperatureUnits, 3, C, DataSourceFcn){}
+
+  virtual double GetValue()
+  {
+    return DataSourceFcn();
+  }
+  virtual double GetValue(Unit unit)
+  {
+    double value;
+    switch(unit)
+    {
+    case C:
+      value = Measurement::GetValue();
+      break;
+    case K:
+      value = GetValue()+273.15;
+      break;
+    case F:
+      value = GetValue()*1.8+32.0;
+      break;
+    default:
+      assert(false &&"unit must match measurement's units");
+      break;
+    }
+    return value;
+  }
+};
+----
+
+=== Файл Measurement.h
+
+[source, cpp]
+----
+#include <string>
+#include <cassert>
+
+enum Unit
+{
+  K,
+  F,
+  C,
+  mmHg,
+  percent
+};
+
+class Measurement
+{
+protected:
+  double(*DataSourceFcn)();
+public:
+  const Unit *const units;
+  const std::size_t countOfUnits;
+  const Unit defaultUnit;
+  std::string quantityName;
+
+  Measurement(std::string quantityName, Unit* units, std::size_t countOfUnits, Unit defaultUnit, double(*DataSourceFcn)()):
+    quantityName(quantityName),units(units), countOfUnits(countOfUnits),defaultUnit(defaultUnit), DataSourceFcn(DataSourceFcn)
+  {
+    assert(CheckUnit(defaultUnit) &&" defalt unit must match measurement's units");
+  }
+  Measurement(std::string quantityName, Unit unit, double(*DataSourceFcn)()):
+    quantityName(quantityName),defaultUnit(unit),units(&defaultUnit), countOfUnits(1), DataSourceFcn(DataSourceFcn)
+  {
+  }
+
+  virtual double GetValue()
+  {
+    return DataSourceFcn();
+  }
+  virtual double GetValue(Unit unit)
+  {
+    assert(CheckUnit(unit)&&" defalt unit must match measurement's units");
+    return DataSourceFcn();
+  }
+  bool CheckUnit(Unit unit)
+  {
+    bool flag=false;
+    for(int i=0;i<countOfUnits;i++)
+    {
+      if(unit==units[i])
+      {
+        flag=true;
+      }
+    }
+    return flag;
+  }
+
+  static string ShowUnitName(Unit unit)
+  {
+    string str;
+    switch(unit)
+    {
+    case K:
+      str = "K";
+      break;
+    case F:
+      str = "F";
+      break;
+    case C:
+      str = "C";
+      break;
+    case mmHg:
+      str = "mmHg";
+      break;
+    case percent:
+      str = "%";
+      break;
+    default:
+      assert(false &&" unit must match measurement's units");
+      break;
+    }
+    return str;
+  }
+};
+----
